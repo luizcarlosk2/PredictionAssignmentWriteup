@@ -1,0 +1,251 @@
+---
+title: "Practical Machine Learning - Prediction Assignment Writeup"
+author: "Luiz Carlos Franze"
+date: "27/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Human Activity Recognition (HAR) Analysis and prediction
+
+### Summary
+
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+More information about this study, you can check on this [link](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har).
+
+
+### Preliminar analysis
+
+Load main libraries and download the training data and test data:
+
+```{r message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(caret)
+#library(lubridate)
+library(rlist)
+library(tictoc)
+library(rattle)
+library(ggcorrplot)
+
+set.seed(202104)
+dl_list <- c("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+             "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+fl_name_list <- c("pml-training.csv",
+                  "pml-testing.csv")
+
+x <- c(1:length(dl_list))
+# Download datasets if doesn't exist
+for (i in 1:length(dl_list)){
+    if(!file.exists(fl_name_list[i])){
+        download.file(dl_list[i],fl_name_list[i])
+        print(paste("Downloading file",fl_name_list[i]))
+    }
+    else {print(paste("File",fl_name_list[i], "already exists."))}
+}
+
+na_common_values <- c("", " ", "#DIV/0!", "N/A", "NA", "Nan", "")
+
+# Loading both files to Dataset and setting NA Values as real NA
+df_training <- as_tibble(read.csv(fl_name_list[1],na.strings = na_common_values))
+df_testing <- as_tibble(read.csv(fl_name_list[2],na.strings = na_common_values))
+
+#List to measure the Model training time:
+time_execution <- list()
+```
+
+Lets take a look into the training dataset dimension:
+
+```{r}
+dim(df_training)
+```
+
+So there are 160 variables. Columns from 1 to 7 is relalted to index(X), user(user_name), time and date of measurement sensor (raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window). The Variabe 160 is our value to predict. a Factor with 5 levels: A, B, C, D and E. All other variables are our sensor values. So, We will discard the the columns 1 to 7. So we will keep only variables related to the sensors and the classe:
+
+```{r}
+names(df_training[c(1:7,160)])
+```
+
+```{r}
+df_training <- df_training[-c(1:7)]
+```
+
+
+Now lets take a look in the dataset, if there are any variable, with relative number of N/A's:
+
+
+```{r}
+check_perc_na <- function(df){ # Function to return a table with number of N/A's in %
+    df <- t(as.data.frame.list(colMeans(is.na(df))))
+    df <- data.frame(df)
+    colnames(df) <- c("NA_Perc")
+    df$NA_Perc <- trunc(df$NA_Perc*100)/100
+    result <- list("table" = table(df), "df" = df)
+    return(result)
+}
+
+check_perc_na(df_training)$table
+```
+
+So, 53 variables has 0% N/A's, 94 variables has between 97% and 99% of N/A's and 6 variables has 100% N/A's.
+So, we will remove from the dataset, the variables with those huge N/A's values (Percentage of N/As > 97%):
+
+```{r}
+index <- check_perc_na(df_training)$df$NA_Perc < 0.97
+df_training <- df_training[index]
+dim(df_training)
+```
+
+
+
+Now we remain a dataset with 52 predictors + the "classe" variable to be predicted.
+
+Lets do a double check if we have a dataset with 100% values no N/A:
+
+
+```{r}
+check_perc_na(df_training)$table
+```
+
+---
+
+### Split the data to Training and Test datasets:
+
+
+
+```{r}
+inTrain <- createDataPartition(y=df_training$classe, p=0.7, list=FALSE)
+train.dataset <- df_training[inTrain,]
+test.dataset <- df_training[-inTrain,]
+```
+
+
+
+Now lets take a look in the features correlation in train.dataset:
+
+
+```{r}
+test.dataset.corr <- test.dataset
+test.dataset.corr$classe <- as.numeric(test.dataset.corr$classe)
+corr_train <- round(cor(test.dataset.corr), 2)
+ggcorrplot(corr_train,insig = "blank")
+```
+
+
+As we can see, there are not so much correlated feature direct to classe.
+
+---
+
+### Creating the models
+
+We are going to create predict models.
+
+I tired to use GBM was to boost predictors but it take ' 27 minutes and take so many RAM resources after finished, so I decided to exclude it. But I keep the code in the document, but set to not to execute (`markdown chunk option: eval = FALSE`) the code for reproducible if necessary:
+
+```{r GBM_Boost, eval = FALSE}
+# This code was set to not execute!
+# Runtime in sec: 1625.705
+# High RAM allocation
+tic()
+modFitGBM <- train(classe ~. ,method="gbm",data=train.dataset,verbose=FALSE)
+exec_time <- toc(quiet=T)
+exec_time <- exec_time$toc - exec_time$tic
+exec_time <- exec_time[[1]]
+time_execution[["gbm"]] <- exec_time
+```
+
+
+
+Lets Start creating a Random Forest Model:
+
+
+```{r RandomForest_Model}
+tic()
+modFitRF <- train(classe~., method="rf", data=train.dataset,
+                   trControl = trainControl(method="cv"),number=4) #cross validation and 4 interactions
+exec_time <- toc(quiet=T)
+exec_time <- exec_time$toc - exec_time$tic
+exec_time <- exec_time[[1]]
+time_execution[["rf"]] <- exec_time
+```
+
+
+
+
+```{r}
+modFitRF$finalModel
+```
+
+
+
+Decision Tree Model:
+
+
+```{r}
+tic()
+modFitDT <- train(classe ~ .,method="rpart",data=train.dataset) # rpart regression and classifications trees.
+exec_time <- toc(quiet=T)
+exec_time <- exec_time$toc - exec_time$tic
+exec_time <- exec_time[[1]]
+time_execution[["rf"]] <- exec_time
+```
+
+
+```{r}
+modFitDT$finalModel
+```
+
+
+```{r}
+fancyRpartPlot(modFitDT$finalModel)
+```
+
+---
+
+### Testing Models
+
+
+
+```{r}
+
+print("Confusion Matrix of Random Forest:")
+predRF <- predict(modFitRF,test.dataset); 
+test.dataset$predRight <- predRF==test.dataset$classe
+confusionMatrix(predRF,test.dataset$classe)
+```
+
+```{r}
+
+print("Confusion Matrix of Decision Tree:")
+predDT <- predict(modFitDT,test.dataset); 
+test.dataset$predRight <- predDT==test.dataset$classe
+confusionMatrix(predDT,test.dataset$classe)
+```
+
+---
+
+### Conclusion and 20 test cases predictions
+
+So, We can see the Accuracy of Random forest is about 99.49% and from Decision Tree is close to 49.18%.
+About the time execution, the Training Random Forest take around 17 minutes. Decision Tree takes 6 seconds. But due the low accuracy of Decision Tree, and a good performance od random forest, I decided to keep RF to predict the 20 classe:
+
+
+
+```{r}
+predict(modFitRF,df_testing)
+```
+
+
+
+
+
+
+
+
+
+
