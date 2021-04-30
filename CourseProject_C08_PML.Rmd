@@ -3,6 +3,7 @@ title: "Practical Machine Learning - Prediction Assignment Writeup"
 author: "Luiz Carlos Franze"
 date: "27/04/2021"
 output: html_document
+keep_md: true
 ---
 
 ```{r setup, include=FALSE}
