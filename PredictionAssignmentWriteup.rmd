@@ -1,9 +1,10 @@
 ---
-title: "Practical Machine Learning - Prediction Assignment Writeup"
+title: "Prediction Assignment Writeup"
 author: "Luiz Carlos Franze"
-date: "27/04/2021"
-output: html_document
-keep_md: true
+date: "29/04/2021"
+output: 
+  html_document: 
+    keep_md: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -240,13 +241,6 @@ About the time execution, the Training Random Forest take around 17 minutes. Dec
 ```{r}
 predict(modFitRF,df_testing)
 ```
-
-
-
-
-
-
-
 
 
 
